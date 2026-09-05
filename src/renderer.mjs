@@ -131,21 +131,27 @@ class Renderer {
     if(boss){
       const t=game.visualTime;this.point(boss.x,boss.y,110,boss.color,8,0,.24);
       for(let i=0;i<12;i++){const a=i*Math.PI/6+t*.3;this.point(boss.x+Math.cos(a)*47,boss.y+Math.sin(a)*47,5,boss.color,2,a,.5);}
-      this.point(boss.x,boss.y,61,boss.color,7);
+      this.point(boss.x,boss.y,61,boss.hitFlash>0&&!game.reducedEffects?'#edf2ff':boss.color,7);if(boss.hitFlash>0)this.point(boss.x,boss.y+22,18,'#edf2ff',3,0,.75);
     }
-    for(const e of game.enemies)this.point(e.x,e.y,e.radius*2.6,e.color,6,Math.sin(e.age*7)*.15);
+    for(const e of game.enemies){
+      if(e.y>15&&(e.tell??0)<game.config.feel.enemyTell){const progress=(e.tell??0)/Math.max(.001,game.config.feel.enemyTell);this.point(e.x,e.y,65-progress*25,e.color,8,0,.35+progress*.25);}
+      this.point(e.x,e.y,e.radius*2.6,e.hitFlash>0&&!game.reducedEffects?'#edf2ff':e.color,6,Math.sin(e.age*7)*.15);
+    }
     for(const s of game.shots)this.point(s.x,s.y,25,'#b9f8ef',10,0,.8);
     for(const item of game.items){this.point(item.x,item.y,15,item.type==='power'?'#f5a1cb':'#9ddae9',11,0,1);}
+    // Transient feedback is BELOW threats, never painted over incoming bullets.
+    for(let i=0;i<game.effects.length;i++){const e=game.effects[i];if(game.reducedEffects&&i%4)continue;this.point(e.x,e.y,e.size*2,e.color,e.collect?2:9,0,Math.max(0,e.life/e.maxLife)*.8);}
+    for(const r of game.rings){const progress=1-r.life/r.maxLife;this.point(r.x,r.y,12+progress*r.size,r.color,8,0,(1-progress)*(game.reducedEffects?.16:.5));}
     const p=game.player;
+    if(game.muzzle>0&&!game.reducedEffects)this.point(p.x,p.y-22,18,'#b9f8ef',3,0,.55);
     this.point(p.x-23,p.y+2,12,'#b5e7f1',2,game.visualTime*2,.65);this.point(p.x+23,p.y+2,12,'#b5e7f1',2,-game.visualTime*2,.65);
     if(p.focus)this.point(p.x,p.y,67,'#c6dde8',8,0,.28);
     this.point(p.x,p.y,40,'#ffffff',5,0,p.inv>0&&Math.floor(game.visualTime*10)%2?.4:1);
     for(const b of game.bullets)this.point(b.x,b.y,b.size*2,b.color,SHAPES[b.shape],b.angle);
     if(game.showHitboxes){for(const b of game.bullets)this.point(b.x,b.y,b.radius*2.4,'#ffffff',8,0,.5);}
-    for(const e of game.effects)this.point(e.x,e.y,e.size*2,e.color,9,0,Math.max(0,e.life/e.maxLife));
     // Hit marker is drawn last so its 2.5 px collision circle remains readable.
-    if(p.focus||game.mode==='preview'){this.point(p.x,p.y,game.config.player.hitRadius*2.8+3,'#0d1022',0,0,1);this.point(p.x,p.y,game.config.player.hitRadius*2.65,'#ffffff',12,0,1);}
-    if(game.bombRing>0){const rad=(1.4-game.bombRing)*430;for(let i=0;i<110;i++){const a=i*Math.PI*2/110;this.point(p.x+Math.cos(a)*rad,p.y+Math.sin(a)*rad,10,'#d7e7ff',9,0,game.bombRing/1.4);}}
+    if(p.focus||game.mode==='preview'||game.mode==='story'){this.point(p.x,p.y,game.config.player.hitRadius*2.8+3,'#0d1022',0,0,1);this.point(p.x,p.y,game.config.player.hitRadius*2.65,'#ffffff',12,0,1);}
+    if(game.bombRing>0&&!game.reducedEffects){const origin=game.bombOrigin??p,rad=(1.1-game.bombRing)*530;for(let i=0;i<110;i++){const a=i*Math.PI*2/110;this.point(origin.x+Math.cos(a)*rad,origin.y+Math.sin(a)*rad,8,'#d7e7ff',9,0,game.bombRing/1.1*.6);}}
     gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.useProgram(this.sprite);
     gl.bindBuffer(gl.ARRAY_BUFFER,this.spriteBuffer);gl.bufferData(gl.ARRAY_BUFFER,this.data.subarray(0,this.count*9),gl.DYNAMIC_DRAW);
     const stride=36;for(const[k,n,offset]of [['a_pos',2,0],['a_size',1,8],['a_angle',1,12],['a_color',4,16],['a_shape',1,32]]){const l=this.loc[k];gl.enableVertexAttribArray(l);gl.vertexAttribPointer(l,n,gl.FLOAT,false,stride,offset);}

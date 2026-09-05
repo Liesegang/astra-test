@@ -22,17 +22,19 @@ const UI=`
    <canvas id="game" width="480" height="640" aria-label="弾幕シューティング。矢印またはWASDで移動、Shiftで低速、Zで射撃、Xでボム。スマートフォンはドラッグで移動。" tabindex="0"></canvas>
    <div class="stage-overlay">
     <div class="start-screen" id="start-screen"><div class="chapter">第一夜</div><h2 id="start-stage">花の降る参道</h2><p class="desc">散りゆく願いを、迎えにいこう。</p><button class="primary" id="start">物語をはじめる ${icon('arrow')}</button><p class="hint">PRESS ENTER TO START</p></div>
-    <div class="boss-hud" id="boss-hud" hidden><div class="boss-row"><span class="boss-name" id="boss-name"></span><span class="boss-time"><span id="boss-time">30</span><small>秒</small></span></div><div class="hp-track"><div class="hp-value" id="hp-value"></div></div><div class="spell-row"><span class="spell-name" id="spell-name"></span><div class="phase-dots" id="phase-dots"></div></div></div>
+    <div class="boss-hud" id="boss-hud" hidden><div class="boss-row"><span class="boss-name" id="boss-name"></span><span class="boss-time"><span id="boss-time">30</span><small>秒</small></span></div><div class="hp-track"><div class="hp-chip" id="hp-chip"></div><div class="hp-value" id="hp-value"></div></div><div class="spell-row"><span class="spell-name" id="spell-name"></span><div class="phase-dots" id="phase-dots"></div></div></div>
     <div class="stage-banner" id="stage-banner" hidden><div class="title" id="banner-title"></div><div class="sub" id="banner-sub"></div></div>
-    <div class="dialogue-box" id="dialogue-box" hidden><div class="dialogue-speaker" id="dialogue-speaker"></div><div class="dialogue-text" id="dialogue-text" aria-live="polite"></div><div class="dialogue-footer"><span id="dialogue-count"></span><button class="dialogue-next" id="dialogue-next">次へ <span class="key">Z / ENTER</span>${icon('arrow')}</button></div></div>
+    <div class="dialogue-box" id="dialogue-box" hidden><div class="dialogue-speaker" id="dialogue-speaker"></div><div class="dialogue-text" id="dialogue-text" aria-live="polite"></div><div class="dialogue-footer"><span id="dialogue-count"></span><button class="dialogue-skip" id="dialogue-skip">会話をスキップ</button><button class="dialogue-next" id="dialogue-next">次へ <span class="key">Z / ENTER</span>${icon('arrow')}</button></div></div>
     <div class="overlay-center choice-screen" id="choice-screen" hidden><h2>夜の分かれ道</h2><p id="choice-prompt"></p><div class="choice-options" id="choice-options"></div></div>
     <div class="overlay-center" id="pause-screen" hidden><h2>ひと休み</h2><p>夜は、まだ続いている。</p><button class="primary" id="resume">つづける ${icon('play')}</button><button class="secondary" id="pause-retry">最初から</button></div>
     <div class="overlay-center" id="result-screen" hidden><h2 id="result-title"></h2><p id="result-description"></p><div class="result-score" id="result-score"></div><p id="result-details"></p><button class="primary" id="retry">もう一度 ${icon('reset')}</button><button class="secondary" id="continue" hidden>その場からコンティニュー</button><button class="text-button" id="result-home">タイトルに戻る</button></div>
     <div class="preview-label" id="preview-label" hidden><span class="name" id="preview-name"></span><span id="practice-state">INVINCIBLE</span></div>
+    <div class="feel-notice" id="feel-notice" role="status" hidden><strong id="notice-title"></strong><span id="notice-detail"></span></div>
     <div class="bomb-flash" id="bomb-flash"></div>
     <div class="overlay-center" id="error-screen" hidden><h2>実行を停止しました</h2><p class="error-message" id="runtime-error"></p><button class="secondary" id="error-editor">YAML を修正する</button></div>
    </div>
   </div>
+  <div class="quick-hud" id="quick-hud"><span id="quick-lives"></span><span id="quick-bombs"></span><span id="quick-score"></span></div>
   <div class="game-bottom"><span class="engine-label">WEBGL <span id="fps">60</span> FPS</span><span>弾数 <span id="bullet-count">0</span> <span id="cap-indicator"></span></span></div>
   <div class="mobile-controls"><span class="touch-hint">画面をドラッグして移動</span><button id="touch-focus" aria-label="押している間低速移動">低速</button><button id="touch-bomb">ボム</button></div>
  </section>
@@ -43,6 +45,8 @@ const UI=`
   <div class="metrics"><div class="metric"><span class="small-label">POWER</span><span class="value" id="power">1.00</span></div><div class="metric"><span class="small-label">GRAZE</span><span class="value" id="graze">0</span></div></div>
   <div class="settings"><label for="difficulty">難易度</label><select id="difficulty"><option value="easy">EASY</option><option value="normal" selected>NORMAL</option><option value="hard">HARD</option></select></div>
   <label class="auto-shot"><input type="checkbox" id="auto-shot" checked> オートショット</label>
+  <label class="check reduce-control"><input type="checkbox" id="reduced-effects"> 演出を控えめに</label>
+  <p class="feel-guide">Shiftでアイテムを吸引 · Rで即リトライ<br>ボス戦では、同じスペルから練習できます。</p>
   <div class="controls"><div class="control"><span class="control-keys"><span class="key">↑↓←→</span><span class="muted">/</span><span class="key wide">WASD</span></span><span>移動</span></div><div class="control"><span class="control-keys"><span class="key wide">SHIFT</span></span><span class="control-desc">低速移動 <span class="muted">＋ 当たり判定</span></span></div><div class="control"><span class="control-keys"><span class="key">Z</span><span class="shot-label">射撃</span><span class="key">X</span></span><span>ボム</span></div><div class="control"><span class="control-keys"><span class="key">ESC</span><span class="muted">/</span><span class="key">P</span></span><span>一時停止</span></div></div>
   <button class="make-pattern" id="make-pattern"><span>自分の弾幕を、咲かせよう。<small>YAML を編集して、その場で試射</small></span>${icon('arrow')}</button>
   <div class="play-actions" id="play-actions" hidden><button class="secondary" id="restart-side">最初から</button><button class="secondary" id="home-side">タイトルへ</button></div>
@@ -81,9 +85,11 @@ const UI=`
 $('#app').innerHTML=UI;
 const editor=$('#yaml-editor');let draft=readStored('moonlit.yaml.v1',SAMPLES.stage),config,validationTimer,view='play',lastTextKey='',lastChoice='',lastResources='',lastBossDots='',toastTimer;
 try{config=parseProject(draft);}catch{config=parseProject(SAMPLES.stage);}
-const audio=new AudioEngine();const game=new Game(config,audio);let renderer;
+const audio=new AudioEngine();audio.enabled=readStored('moonlit.sound.v1','on')==='on';
+const game=new Game(config,audio);game.reducedEffects=readStored('moonlit.effects.v1',matchMedia('(prefers-reduced-motion: reduce)').matches?'reduced':'full')==='reduced';
+$('#reduced-effects').checked=game.reducedEffects;document.body.classList.toggle('reduced-effects',game.reducedEffects);let renderer;
 try{renderer=new Renderer($('#game'));}catch(e){$('#app').innerHTML=`<div class="fatal"><h1>WebGL を起動できませんでした</h1><p>${esc(e.message)}</p><p>対応ブラウザで開き、ハードウェアアクセラレーションを確認してください。</p></div>`;throw e;}
-let highScore=Number(readStored('moonlit.highscore.v1','0'))||0;
+let highScore=Number(readStored('moonlit.highscore.v2','0'))||0;
 const keys=new Set();let pointerId=null,pointerOrigin=null,pointerTarget=null,touchFocus=false;
 const show=(el,on)=>{el.hidden=!on;};
 const text=(sel,value)=>{const el=$(sel);const t=String(value);if(el.textContent!==t)el.textContent=t;};
@@ -110,6 +116,9 @@ function setView(next,{preview=true}={}){
 function begin(){
   audio.unlock();game.speedScale=1;game.showHitboxes=false;game.start($('#difficulty').value);setView('play',{preview:false});keys.clear();pointerTarget=null;renderHUD();$('#game').focus({preventScroll:true});
 }
+function retryRun(){
+  try{audio.unlock();releaseInput();game.retry();renderHUD();$('#game').focus({preventScroll:true});}catch(e){runtimeError(e);}
+}
 function goHome(){game.speedScale=1;game.reset('title');setView('play',{preview:false});renderHUD();}
 function startPreview(){audio.unlock();game.difficulty=$('#difficulty').value;game.preview($('#pattern-select').value);game.speedScale=$('#half-speed').classList.contains('active')?.5:1;game.showHitboxes=$('#hitboxes').checked;game.practice=$('#invincible').checked;updatePatternDescription();renderHUD();}
 function applyDraft(play=false){
@@ -118,29 +127,39 @@ function applyDraft(play=false){
 function jumpToPattern(){const id=$('#pattern-select').value,re=new RegExp('^  '+id+':','m'),m=re.exec(editor.value);if(!m){toast('編集中の YAML にこのパターンが見つかりません');return;}const line=editor.value.slice(0,m.index).split('\n').length;editor.focus({preventScroll:true});editor.setSelectionRange(m.index,m.index+id.length+3);editor.scrollTop=Math.max(0,(line-2)*20);syncScroll();cursor();}
 function runtimeError(e){game.error=e.message??String(e);game.paused=true;status(game.error,true);renderHUD();}
 function renderHUD(){
- const s=game.snapshot();text('#score',String(Math.floor(s.score)).padStart(9,'0'));text('#high-score',String(Math.floor(highScore)).padStart(9,'0'));text('#power',s.power.toFixed(2));text('#graze',s.graze);text('#bullet-count',s.bullets.toLocaleString());text('#cap-indicator',s.capHit?'LIMIT':'');text('#stage-mode',s.mode==='preview'?'PATTERN PREVIEW':'STAGE 01');text('#rank-label',game.difficulty.toUpperCase());text('#pause-label',s.paused?'RESUME':'PAUSE');
+ const s=game.snapshot();
+ text('#quick-lives',`残機 ${s.lives}`);text('#quick-bombs',`ボム ${s.bombs}`);text('#quick-score',String(Math.floor(s.score)).padStart(9,'0'));
+ $('#game-frame').classList.toggle('practice-run',s.continued);
+ text('#rank-label',game.difficulty.toUpperCase());
+ const retryLabel=s.retryPhase===null?'再挑戦 · R':'このスペルから · R';text('#retry',retryLabel);text('#pause-retry',retryLabel);text('#restart-side',retryLabel);
+ show($('#feel-notice'),!!s.notice&&!s.dialogue&&!s.choice&&!s.paused&&['story','preview'].includes(s.mode));
+ if(s.notice){text('#notice-title',s.notice.title);text('#notice-detail',s.notice.detail);$('#feel-notice').style.opacity=String(Math.min(1,s.notice.remaining*4));}
+ document.body.classList.toggle('playing',s.mode==='story');
+ text('#score',String(Math.floor(s.score)).padStart(9,'0'));text('#high-score',String(Math.floor(highScore)).padStart(9,'0'));text('#power',s.power.toFixed(2));text('#graze',s.graze);text('#bullet-count',s.bullets.toLocaleString());text('#cap-indicator',s.capHit?'LIMIT':'');text('#stage-mode',s.mode==='preview'?'PATTERN PREVIEW':'STAGE 01');text('#rank-label',s.continued?'PRACTICE · 記録対象外':game.difficulty.toUpperCase());text('#pause-label',s.paused?'RESUME':'PAUSE');
  $('#pause-top').disabled=['title','gameover','clear'].includes(s.mode)||!!s.error;
  const resourceKey=s.lives+':'+s.bombs;if(lastResources!==resourceKey){lastResources=resourceKey;$('#lives').innerHTML=Array.from({length:Math.max(config.player.lives,s.lives)},(_,i)=>icon('heart',i<s.lives?'solid':'empty')).join('');$('#bombs').innerHTML=Array.from({length:Math.max(config.player.bombs,s.bombs)},(_,i)=>icon('diamond',i<s.bombs?'solid':'empty')).join('');$('#lives').setAttribute('aria-label',`残機 ${s.lives}`);$('#bombs').setAttribute('aria-label',`ボム ${s.bombs}`);}
  show($('#start-screen'),s.mode==='title');show($('#boss-hud'),!!s.boss);show($('#dialogue-box'),!!s.dialogue&&!s.paused);show($('#choice-screen'),!!s.choice&&!s.paused);show($('#pause-screen'),s.paused&&!s.error);show($('#preview-label'),s.mode==='preview');show($('#play-actions'),s.mode!=='title');show($('#stage-banner'),!!s.banner);show($('#error-screen'),!!s.error);show($('#result-screen'),['clear','gameover'].includes(s.mode));
  $('#difficulty').disabled=s.mode==='story';
- if(s.boss){text('#boss-name',s.boss.name);text('#boss-time',Math.ceil(s.boss.remaining).toString().padStart(2,'0'));text('#spell-name',s.boss.spell);$('#hp-value').style.transform=`scaleX(${s.boss.hp})`;const dk=s.boss.index+':'+s.boss.total;if(dk!==lastBossDots){lastBossDots=dk;$('#phase-dots').innerHTML=Array.from({length:s.boss.total},(_,i)=>`<span class="${i>=s.boss.index?'remaining':''}"></span>`).join('');}}
+ if(s.boss){text('#boss-name',s.boss.name);text('#boss-time',Math.ceil(s.boss.remaining).toString().padStart(2,'0'));text('#spell-name',s.boss.spell);$('#hp-value').style.transform=`scaleX(${s.boss.hp})`;$('#hp-chip').style.transform=`scaleX(${s.boss.hp})`;const dk=s.boss.index+':'+s.boss.total;if(dk!==lastBossDots){lastBossDots=dk;$('#phase-dots').innerHTML=Array.from({length:s.boss.total},(_,i)=>`<span class="${i>=s.boss.index?'remaining':''}"></span>`).join('');}}
  if(s.dialogue){const tk=s.dialogueIndex+':'+s.dialogueLength+':'+s.dialogue.speaker+':'+s.dialogue.text;if(tk!==lastTextKey){lastTextKey=tk;text('#dialogue-speaker',s.dialogue.speaker);text('#dialogue-text',s.dialogue.text);text('#dialogue-count',`${String(s.dialogueIndex+1).padStart(2,'0')} / ${String(s.dialogueLength).padStart(2,'0')}`);}}
  if(s.choice){text('#choice-prompt',s.choice.prompt);const ck=JSON.stringify(s.choice);if(ck!==lastChoice){lastChoice=ck;$('#choice-options').replaceChildren(...s.choice.options.map((o,i)=>{const button=document.createElement('button');button.className='secondary';button.textContent=o.text;button.onclick=()=>{try{game.choose(i);renderHUD();}catch(e){runtimeError(e);}};return button;}));}}
  if(s.banner){text('#banner-title',s.banner.text);text('#banner-sub',s.banner.subtitle);}
  if(s.mode==='preview'){text('#preview-name',config.patterns[s.previewPattern]?.name??'');text('#practice-state',game.practice?'INVINCIBLE':'LIVE');}
  if(s.error)text('#runtime-error',s.error);
- $('#bomb-flash').style.opacity=String(game.bombFlash*.32);
+ $('#bomb-flash').style.opacity=String(game.reducedEffects?0:game.bombFlash*.32);
  if(['clear','gameover'].includes(s.mode)){
    const won=s.mode==='clear';text('#result-title',won?'夜明けの帰り道':'また、月の下で');text('#result-description',won?'灯りは、無事に帰り着きました。':'散った願いは、もう一度拾える。');text('#result-score',String(Math.floor(s.score)).padStart(9,'0'));text('#result-details',`スペル取得 ${s.captures}  /  グレイズ ${s.graze}  /  被弾 ${s.misses}`);show($('#continue'),!won);
-   if(s.score>highScore){highScore=s.score;store('moonlit.highscore.v1',highScore);}
+   if(!s.continued&&s.mode!=='preview'&&game.failedMode!=='preview'&&s.score>highScore){highScore=s.score;store('moonlit.highscore.v2',highScore);}
  }
 }
 // UI actions remain native DOM; all untrusted YAML strings are text, never HTML.
-$('#start').onclick=begin;$('#retry').onclick=begin;$('#pause-retry').onclick=begin;$('#restart-side').onclick=begin;
+$('#start').onclick=begin;$('#retry').onclick=retryRun;$('#pause-retry').onclick=retryRun;$('#restart-side').onclick=retryRun;
 $('#brand').onclick=goHome;$('#home-side').onclick=goHome;$('#result-home').onclick=goHome;
 $('#continue').onclick=()=>{game.continueRun();renderHUD();};
 $('#tab-play').onclick=()=>setView('play');$('#tab-studio').onclick=()=>setView('studio');$('#make-pattern').onclick=()=>setView('studio');
 $('#pause-top').onclick=()=>{game.togglePause();renderHUD();};$('#resume').onclick=()=>{game.paused=false;renderHUD();};
+$('#dialogue-skip').onclick=()=>{try{game.skipDialogue();renderHUD();}catch(e){runtimeError(e);}};
+$('#reduced-effects').onchange=e=>{game.reducedEffects=e.target.checked;store('moonlit.effects.v1',game.reducedEffects?'reduced':'full');document.body.classList.toggle('reduced-effects',game.reducedEffects);};
 $('#dialogue-next').onclick=()=>{try{game.advance();renderHUD();}catch(e){runtimeError(e);}};
 $('#apply').onclick=()=>applyDraft();$('#play-project').onclick=()=>applyDraft(true);$('#pattern-select').onchange=startPreview;$('#preview-restart').onclick=startPreview;$('#jump-pattern').onclick=jumpToPattern;
 $('#auto-shot').onchange=e=>{game.autoShot=e.target.checked;};
@@ -148,7 +167,8 @@ $('#difficulty').onchange=e=>{game.difficulty=e.target.value;game.rank={easy:.78
 $('#invincible').onchange=e=>{game.practice=e.target.checked;renderHUD();};$('#hitboxes').onchange=e=>{game.showHitboxes=e.target.checked;};
 function speed(half){$('#half-speed').classList.toggle('active',half);$('#full-speed').classList.toggle('active',!half);if(game.mode==='preview')game.speedScale=half?.5:1;}
 $('#half-speed').onclick=()=>speed(true);$('#full-speed').onclick=()=>speed(false);
-$('#sound').onclick=()=>{audio.setEnabled(!audio.enabled);$('#sound').innerHTML=icon(audio.enabled?'volume':'mute');$('#sound').classList.toggle('on',audio.enabled);$('#sound').setAttribute('aria-label',audio.enabled?'サウンドを無効にする':'サウンドを有効にする');};
+function soundUI(){$('#sound').innerHTML=icon(audio.enabled?'volume':'mute');$('#sound').classList.toggle('on',audio.enabled);$('#sound').setAttribute('aria-label',audio.enabled?'サウンドを無効にする':'サウンドを有効にする');$('#sound').setAttribute('aria-pressed',String(audio.enabled));}
+$('#sound').onclick=()=>{audio.setEnabled(!audio.enabled);store('moonlit.sound.v1',audio.enabled?'on':'off');soundUI();};soundUI();
 $('#fullscreen').onclick=async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else if(document.documentElement.requestFullscreen)await document.documentElement.requestFullscreen();else toast('このブラウザでは全画面 API は使えません');}catch{toast('全画面表示を開始できませんでした');}};
 $('#help-open').onclick=()=>{if(game.mode==='preview')game.paused=true;$('#help').showModal();renderHUD();};$('#help-close').onclick=()=>$('#help').close();$('#help').addEventListener('click',e=>{if(e.target===$('#help')){const r=$('#help').getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)$('#help').close();}});$('#help').addEventListener('close',()=>{if(game.mode==='preview'&&!game.error)game.paused=false;renderHUD();});
 $('#error-editor').onclick=()=>{game.error=null;setView('studio',{preview:false});game.paused=true;editor.focus({preventScroll:true});};
@@ -164,7 +184,7 @@ editor.addEventListener('keydown',e=>{
 const editing=target=>target instanceof Element&&!!target.closest('textarea,input,select,[contenteditable="true"]');
 window.addEventListener('keydown',e=>{
  if($('#help').open)return;if(editing(e.target))return;
- const k=e.code;const used=['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyW','KeyA','KeyS','KeyD','KeyZ','KeyX','ShiftLeft','ShiftRight','Enter','Escape','KeyP'];
+ const k=e.code;const used=['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyW','KeyA','KeyS','KeyD','KeyZ','KeyX','ShiftLeft','ShiftRight','Enter','Escape','KeyP','KeyR'];
  if(!used.includes(k))return;
  // A focused button retains native Enter activation (avoids advancing two dialogue lines).
  if(k==='Enter'&&e.target instanceof HTMLButtonElement)return;
@@ -172,6 +192,7 @@ window.addEventListener('keydown',e=>{
  try{
   if(k==='Enter'&&game.mode==='title')begin();
   else if((k==='Enter'||k==='KeyZ')&&game.dialogue){game.advance();renderHUD();}
+  else if(k==='KeyR'&&game.mode!=='title')retryRun();
   else if(k==='KeyX'){game.bomb();renderHUD();}
   else if(k==='Escape'||k==='KeyP'){game.togglePause();renderHUD();}
  }catch(err){runtimeError(err);}
