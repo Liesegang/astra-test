@@ -1,0 +1,28 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {Game,FIXED_DT} from '../src/engine.mjs';
+import {parseProject} from '../src/config.mjs';
+import {SAMPLES} from '../src/content.mjs';
+const make=(sample=SAMPLES.stage)=>new Game(parseProject(sample));
+const tick=(g,t)=>{for(let i=0;i<Math.round(t/FIXED_DT);i++)g.step(FIXED_DT);};
+const bullet=(x,y)=>({x,y,angle:0,speed:0,accel:0,turn:0,age:0,life:10,radius:2,size:8,color:'#f2a4cf',shape:'orb',depth:0});
+const bossGame=()=>{const g=make();g.reset('story');g.commandIndex=g.config.commands.findIndex(c=>c.type==='boss');g.runCommands();return g;};
+test('feel defaults preserve existing YAML; malformed or unbounded values fail',()=>{
+  assert.equal(make().config.feel.bossStop,.12);
+  assert.equal(parseProject(SAMPLES.minimal+'\nfeel: {bossStop: 0, shotInterval: 0.08}\n').feel.shotInterval,.08);
+  for(const v of ['{bossStop: -1}','{bombClear: 100}','{grazeStep: 2.5}','{mispelled: 2}','{pickupRadius: .nan}'])assert.throws(()=>parseProject(SAMPLES.minimal+'\nfeel: '+v));
+});
+test('all four power levels produce distinct shot tiers',()=>{const g=make();for(let tier=1;tier<=4;tier++){g.shots=[];g.power=tier;g.shoot();assert.equal(g.shots.length,tier*2);}});
+test('a hit emits immediate local feedback without stopping simulation',()=>{const g=make();g.reset('story');g.commandIndex=g.config.commands.length;g.waiting='boss';g.enemies=[{x:240,y:140,radius:16,hp:28}];g.shots=[{x:240,y:170,vx:0,vy:-850,damage:7}];g.updateShots(.04);assert.equal(g.enemies[0].hp,21);assert.ok(g.enemies[0].hitFlash>0);assert.equal(g.stopRemaining,0);assert.equal(g.feedback.hits,1);});
+test('a bomb suppresses fresh bullets, then permits the next pattern',()=>{const g=make();g.preview(Object.keys(g.config.patterns)[0]);assert.equal(g.bomb(),true);tick(g,.5);assert.equal(g.bullets.length,0);assert.equal(g.addBullet(bullet(0,0)),false);tick(g,.2);assert.equal(g.addBullet(bullet(0,0)),true);});
+test('bomb ring origin is fixed at activation rather than attached to player',()=>{const g=make();g.preview(Object.keys(g.config.patterns)[0]);g.bomb();const origin={...g.bombOrigin};g.step(.1,{x:1});assert.deepEqual(g.bombOrigin,origin);assert.notEqual(g.player.x,origin.x);});
+test('invulnerability cannot farm grazes',()=>{const g=make();g.preview(Object.keys(g.config.patterns)[0]);g.player.inv=1;g.bullets=[bullet(g.player.x+14,g.player.y)];g.step(FIXED_DT);assert.equal(g.graze,0);});
+test('a dangerous near miss scores once and awards each milestone once',()=>{const g=make();g.preview(Object.keys(g.config.patterns)[0]);g.graze=24;g.bullets=[bullet(g.player.x+14,g.player.y)];g.step(FIXED_DT);assert.equal(g.graze,25);assert.equal(g.score,1550);g.step(FIXED_DT);assert.equal(g.score,1550);});
+test('focus attracts farther items and attraction stays latched',()=>{const g=make();g.player.focus=false;g.items=[{x:340,y:545,type:'point',age:0}];g.updateItems(.01);assert.equal(!!g.items[0].magnet,false);g.player.focus=true;g.updateItems(.01);assert.equal(g.items[0].magnet,true);g.player.focus=false;g.player.x=50;g.updateItems(.01);assert.equal(g.items[0].magnet,true);});
+test('attracted items do not overshoot at large dt, power-up is announced',()=>{const g=make();g.power=1.75;g.items=[{x:265,y:545,type:'power',age:0,magnet:true}];g.updateItems(.2);assert.equal(g.items.length,0);assert.equal(g.power,2);assert.equal(g.feedback.powerups,1);assert.equal(g.notice.title,'POWER UP');});
+test('boss phase clear stops briefly only after bullets are cleared',()=>{const g=bossGame();g.bullets=[bullet(50,50)];g.boss.hp=0;g.nextPhase();assert.equal(g.bullets.length,0);assert.equal(g.stopRemaining,.12);const t=g.time;g.step(FIXED_DT,{x:1});assert.equal(g.time,t);assert.equal(g.captures,1);});
+test('retry returns to the same boss phase with clean resources, unranked',()=>{const g=bossGame();g.boss.hp=0;g.nextPhase();assert.equal(g.boss.index,1);const score=g.checkpoint.score,captures=g.captures;g.player.lives=0;g.player.bombs=0;g.mode='gameover';g.failedMode='story';g.retry();assert.equal(g.boss.index,1);assert.equal(g.boss.hp,g.boss.maxHp);assert.equal(g.player.lives,3);assert.equal(g.player.bombs,3);assert.equal(g.continued,true);assert.equal(g.score,score);assert.equal(g.captures,captures);assert.equal(g.stopRemaining,0);});
+test('retry skips read dialogue, fresh start still presents it',()=>{const g=make();g.start();assert.ok(g.dialogue);g.skipDialogue();g.retry();assert.equal(g.dialogue,null);assert.equal(g.continued,true);g.start();assert.ok(g.dialogue);assert.equal(g.continued,false);});
+test('retry preserves choices instead of silently choosing a branch',()=>{const g=make(SAMPLES.branching);g.start();for(let i=0;i<500&&!g.choice;i++){if(g.dialogue)g.skipDialogue();else g.step(FIXED_DT);}assert.ok(g.choice);g.retry();for(let i=0;i<500&&!g.choice;i++){if(g.dialogue)g.skipDialogue();else g.step(FIXED_DT);}assert.ok(g.choice);});
+test('enemy enters with a tell before its first emitted bullet',()=>{const g=make();g.reset('story');g.commandIndex=g.config.commands.length;g.waiting='boss';g.autoShot=false;const def=g.config.enemies.fairy;g.enemies=[{...def,x:120,y:80,vx:0,vy:0,age:0,patterns:g.instances(def.patterns)}];tick(g,.3);assert.equal(g.bullets.length,0);tick(g,.2);assert.ok(g.bullets.length>0);});
+test('reduced effects never alter deterministic gameplay',()=>{const a=make(),b=make();a.preview('petals');b.preview('petals');b.reducedEffects=true;tick(a,2);tick(b,2);assert.deepEqual(a.snapshot(),b.snapshot());});

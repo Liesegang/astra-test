@@ -1,34 +1,77 @@
 name: Deploy GitHub Pages
-
 on:
   push:
-    branches: ["main"]
+    branches: [main]
   workflow_dispatch:
-
 permissions:
   contents: read
   pages: write
   id-token: write
-
 concurrency:
-  group: "pages"
+  group: pages
   cancel-in-progress: false
-
 jobs:
   deploy:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v4
+      - uses: actions/checkout@v6
         with:
-          path: .
+          persist-credentials: false
+      - name: Build from YAML and test the engine
+        run: |
+          npm run build
+          npm test
+      - name: Prepare isolated browser verification
+        run: |
+          npm install --prefix "$RUNNER_TEMP/browser-check" --no-audit --no-fund playwright@1.56.1
+          "$RUNNER_TEMP/browser-check/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Verify candidate in a real WebGL browser
+        env:
+          PLAYWRIGHT_MODULE: ${{ runner.temp }}/browser-check/node_modules/playwright
+          QA_DIR: ${{ runner.temp }}/moonlit-qa/candidate
+        run: node scripts/browser-check.cjs
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
+      - name: Verify public HTML matches the tested build
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import {createHash} from 'node:crypto';
+          const hash=data=>createHash('sha256').update(data).digest('hex');
+          const expected=hash(fs.readFileSync('dist/index.html'));
+          const url=process.env.PAGE_URL+'?build='+process.env.GITHUB_SHA;
+          let matched=false;
+          for(let i=0;i<12;i++){
+            try{
+              const r=await fetch(url,{cache:'no-store',signal:AbortSignal.timeout(15000)});
+              if(r.ok&&hash(Buffer.from(await r.arrayBuffer()))===expected){matched=true;console.log('PUBLIC SHA256 MATCH:',expected);break;}
+            }catch(e){console.log('Waiting for public site:',e.message);}
+            await new Promise(r=>setTimeout(r,5000));
+          }
+          if(!matched)throw new Error('Public site did not match tested build');
+          JS
+      - name: Verify actual public gameplay and mobile UI
+        env:
+          PLAYWRIGHT_MODULE: ${{ runner.temp }}/browser-check/node_modules/playwright
+          QA_DIR: ${{ runner.temp }}/moonlit-qa/public
+          TARGET_URL: ${{ steps.deployment.outputs.page_url }}?build=${{ github.sha }}
+        run: node scripts/browser-check.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pages-verification
+          path: |
+            ${{ runner.temp }}/moonlit-qa
+            dist/index.html
+          retention-days: 7

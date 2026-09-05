@@ -23,7 +23,7 @@ function parseProject(source){
   if(typeof source!=='string'||source.length>200000)fail('YAML','ファイルは200,000文字以内にしてください');
   let depth=0,doc;
   try{doc=load(source,{schema:CORE_SCHEMA,listener:event=>{if(event==='open'&&++depth>40)throw new Error('YAMLの入れ子は40段までです');if(event==='close')depth--;}});}catch(e){throw new Error(e.mark?`YAML ${e.mark.line+1}行 ${e.mark.column+1}列: ${e.reason}`:e.message);}
-  safeTree(doc);keys(doc,['version','meta','player','patterns','enemies','bosses','story'],'root');
+  safeTree(doc);keys(doc,['version','meta','player','feel','patterns','enemies','bosses','story'],'root');
   if(doc.version!==1)fail('version','1 を指定してください');
   const meta=doc.meta??{};keys(meta,['title','subtitle','stage','seed'],'meta');
   for(const k of ['title','subtitle','stage'])if(meta[k]!==undefined)str(meta[k],`meta.${k}`,200);
@@ -33,6 +33,12 @@ function parseProject(source){
   for(const k of ['speed','focusSpeed'])num(player[k],`player.${k}`,20,1000);
   num(player.hitRadius,'player.hitRadius',1,6);num(player.damage,'player.damage',1,100);
   for(const k of ['lives','bombs']){num(player[k],`player.${k}`,1,9);if(!Number.isInteger(player[k]))fail(`player.${k}`,'整数を指定してください');}
+  // Game-feel values are optional and bounded; old projects remain valid.
+  const feel=Object.assign({shotInterval:.09,hitFlash:.065,bossStop:.12,enemyTell:.4,bombClear:.65,pickupRadius:80,focusPickupRadius:130,autoCollectY:180,grazeStep:25,grazeBonus:1500},doc.feel);
+  const ranges={shotInterval:[.045,.3],hitFlash:[0,.15],bossStop:[0,.25],enemyTell:[0,1.5],bombClear:[0,2],pickupRadius:[18,200],focusPickupRadius:[18,240],autoCollectY:[0,300],grazeStep:[1,200],grazeBonus:[0,10000]};
+  keys(feel,Object.keys(ranges),'feel');
+  for(const [k,[min,max]] of Object.entries(ranges))num(feel[k],`feel.${k}`,min,max);
+  if(!Number.isInteger(feel.grazeStep))fail('feel.grazeStep','整数を指定してください');
   const srcPatterns=obj(doc.patterns,'patterns');if(Object.keys(srcPatterns).length<1||Object.keys(srcPatterns).length>64)fail('patterns','1〜64個のパターンが必要です');
   const patterns={};
   for(const [key,p]of Object.entries(srcPatterns)){
@@ -109,7 +115,7 @@ function parseProject(source){
   }
   story(doc.story,'story');const labels={};commands.forEach((c,i)=>{if(c.type==='label'){if(Object.hasOwn(labels,c.data))fail('story',`ラベルが重複: ${c.data}`);labels[c.data]=i;}});
   commands.forEach(c=>{const refs=c.type==='goto'?[c.data]:c.type==='choice'?c.data.options.map(o=>o.goto):[];for(const l of refs)if(!Object.hasOwn(labels,l))fail('story',`ラベルがありません: ${l}`);});
-  return {meta:{title:'月影異聞',subtitle:'月が隠した、もうひとつの夜。',stage:'花の降る参道',seed:7319,...meta},player,patterns,enemies,bosses,commands,labels,source};
+  return {meta:{title:'月影異聞',subtitle:'月が隠した、もうひとつの夜。',stage:'花の降る参道',seed:7319,...meta},player,feel,patterns,enemies,bosses,commands,labels,source};
 }
 
 export {COLORS,SHAPES,color,parseProject};

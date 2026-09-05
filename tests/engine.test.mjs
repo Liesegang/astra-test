@@ -1,0 +1,49 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {parseProject} from '../src/config.mjs';
+import {compileExpression} from '../src/expression.mjs';
+import {Game,FIXED_DT,segmentDistanceSq} from '../src/engine.mjs';
+import {PatternInstance,LIMITS} from '../src/patterns.mjs';
+const sample=id=>fs.readFileSync(new URL(`../content/${id}.yaml`,import.meta.url),'utf8');
+const minimal=()=>parseProject(sample('minimal'));
+function tick(g,seconds,input={}){for(let i=0;i<Math.ceil(seconds/FIXED_DT);i++)g.step(FIXED_DT,input);}
+function shootingHarness(){return {rank:1,player:{x:240,y:500},emissionBudget:1000,bullets:[],addBullet(b){this.bullets.push(b);}};}
+
+test('all bundled YAML projects validate',()=>{for(const name of ['stage','minimal','branching'])assert.ok(parseProject(sample(name)).commands.length>0);});
+test('expression precedence, exponentiation and unary operators',()=>{assert.equal(compileExpression('2 + 3 * 4 ^ 2')({}),50);assert.equal(compileExpression('-2^2')({}),-4);assert.equal(compileExpression('2^3^2')({}),512);assert.equal(compileExpression('2^-2')({}),.25);});
+test('functions, constants, and custom parameters',()=>{const f=compileExpression('clamp(speed * sin(pi / 2) + k, 0, 120)',['speed','k']);assert.equal(f({speed:100,k:7}),107);assert.equal(compileExpression('lerp(2, 8, 0.5)')({}),5);});
+test('arbitrary JavaScript and unknown names are rejected',()=>{for(const s of ['window.location','globalThis','constructor.constructor("x")','Math.sin(t)','t;alert(1)','sin()','z+1','1 || 2','[1][0]'])assert.throws(()=>compileExpression(s));});
+test('non-finite math does not enter the simulation',()=>{assert.throws(()=>compileExpression('1/0')({}),/有限/);assert.throws(()=>compileExpression('sqrt(-1)')({}),/有限/);});
+test('unknown fields and missing pattern references are rejected',()=>{assert.throws(()=>parseProject(sample('minimal').replace('speed: 100','speeed: 100')),/未定義/);assert.throws(()=>parseProject(sample('minimal').replace('patterns: [flower]','patterns: [absent]')),/ありません/);});
+test('duplicate keys report a YAML source line',()=>{assert.throws(()=>parseProject('version: 1\nversion: 1\n'),/YAML 2行/);});
+test('unsafe YAML keys, tags and alias graphs are rejected',()=>{
+ for(const src of ['version: 1\n__proto__: {polluted: yes}','version: 1\nmeta: {constructor: 1}','!!js/function function(){return 1;}','version: 1\nmeta: &a {title: hey}\npatterns: *a'])assert.throws(()=>parseProject(src));
+ assert.equal({}.polluted,undefined);
+});
+test('YAML file size, depth and intervals have limits',()=>{assert.throws(()=>parseProject(' '.repeat(200001)));assert.throws(()=>parseProject('a: '.repeat(70)+'1'));assert.throws(()=>parseProject(sample('minimal').replace('every: 0.12','every: 0.001')),/0.025/);});
+test('branch labels are resolved at validation time',()=>{assert.throws(()=>parseProject(sample('branching').replace('goto: ending','goto: missing')),/ラベルがありません/);});
+test('pattern spawning cycles are rejected',()=>{const src=sample('minimal').replace('shape: rice','shape: rice\n        on: {after: 1, fire: flower}');assert.throws(()=>parseProject(src),/循環/);});
+test('acyclic nesting depth is checked regardless of declaration order',()=>{let src='version: 1\npatterns:\n';for(let i=4;i>=0;i--)src+=`  p${i}:\n    emitters:\n      - every: 1\n${i<4?`        on: {after: 1, fire: p${i+1}}\n`:''}`;src+='story:\n  - end: true\n';assert.throws(()=>parseProject(src),/3段/);});
+test('a whole circle has no duplicated endpoint',()=>{const c=minimal(),h=shootingHarness(),p=new PatternInstance(c.patterns.flower);p.step(.01,{x:240,y:100},h);assert.equal(h.bullets.length,6);assert.equal(new Set(h.bullets.map(b=>b.angle.toFixed(5))).size,6);assert.ok(Math.abs(h.bullets[1].angle-Math.PI/3)<1e-9);});
+test('a fan covers its endpoints and aimed fire targets the player',()=>{const c=parseProject(sample('stage')),h=shootingHarness();new PatternInstance(c.patterns.stardust).step(.01,{x:240,y:100},h);assert.equal(h.bullets.length,5);assert.ok(Math.abs(h.bullets[2].angle-Math.PI/2)<1e-9);assert.ok(Math.abs(h.bullets[4].angle-h.bullets[0].angle-40*Math.PI/180)<1e-9);});
+test('per-bullet angle expressions see i and n',()=>{const c=parseProject(sample('minimal').replace('angle: k * 8','angle: i * 10').replace('spread: 360','spread: 0')),h=shootingHarness();new PatternInstance(c.patterns.flower).step(.01,{x:0,y:0},h);assert.ok(Math.abs(h.bullets[1].angle-10*Math.PI/180)<1e-9);});
+test('reused pattern overrides are independent',()=>{const c=parseProject(sample('stage')),a=new PatternInstance(c.patterns.petals,{petals:3,speed:60}),b=new PatternInstance(c.patterns.petals,{petals:7,speed:140}),ha=shootingHarness(),hb=shootingHarness();a.step(.01,{x:0,y:0},ha);b.step(.01,{x:0,y:0},hb);assert.equal(ha.bullets.length,3);assert.equal(hb.bullets.length,7);assert.equal(ha.bullets[0].speed,60);assert.equal(c.patterns.petals.params.speed,100);});
+test('runtime emission count protects against expression explosions',()=>{const c=parseProject(sample('minimal').replace('count: 6','count: 999999')),h=shootingHarness();assert.throws(()=>new PatternInstance(c.patterns.flower).step(.01,{x:0,y:0},h),/1〜256/);});
+test('per-tick emission budget is respected',()=>{const c=minimal(),h=shootingHarness();h.emissionBudget=3;new PatternInstance(c.patterns.flower).step(.01,{x:0,y:0},h);assert.equal(h.bullets.length,3);});
+test('opening dialogue blocks the stage clock and advances sequentially',()=>{const g=new Game(parseProject(sample('stage')));g.start();assert.ok(g.dialogue);tick(g,2);assert.equal(g.time,0);g.advance();assert.equal(g.dialogueIndex,1);g.advance();assert.equal(g.waiting,'time');tick(g,3);assert.ok(g.waves.length||g.enemies.length);});
+test('fixed-step movement is normalized and focus reduces speed',()=>{const g=new Game(minimal());g.preview('flower');g.autoShot=false;g.player.y=400;const x=g.player.x,y=g.player.y;tick(g,.1,{x:1,y:1});const diagonal=Math.hypot(g.player.x-x,g.player.y-y);assert.ok(Math.abs(diagonal-g.config.player.speed*.1)<.001);g.player.x=240;tick(g,.1,{x:1,focus:true});assert.ok(Math.abs(g.player.x-240-g.config.player.focusSpeed*.1)<.001);});
+test('pause freezes both time and projectiles',()=>{const g=new Game(minimal());g.preview('flower');tick(g,1);const t=g.time,x=g.bullets[0].x;g.paused=true;tick(g,2);assert.equal(g.time,t);assert.equal(g.bullets[0].x,x);});
+test('fast swept collision detects a path through the hitbox',()=>{assert.equal(segmentDistanceSq(0,0,-20,0,20,0),0);assert.equal(segmentDistanceSq(0,5,-20,0,20,0),25);});
+test('preview is invulnerable but live mode is not',()=>{const g=new Game(minimal());g.preview('flower');g.hit();assert.equal(g.player.lives,3);g.practice=false;g.hit();assert.equal(g.player.lives,2);assert.ok(g.player.inv>0);g.hit();assert.equal(g.player.lives,2);});
+test('bomb clears bullets, consumes a bomb and grants invincibility',()=>{const g=new Game(minimal());g.preview('flower');tick(g,1);assert.ok(g.bullets.length);assert.equal(g.bomb(),true);assert.equal(g.bullets.length,0);assert.equal(g.player.bombs,2);assert.ok(g.player.inv>0);});
+test('boss timeout proceeds without a capture reward',()=>{const g=new Game(minimal());g.start();g.advance();assert.ok(g.boss);g.autoShot=false;for(let i=0;i<3500&&g.mode==='story';i++){g.player.inv=999;g.step(FIXED_DT);}assert.equal(g.mode,'clear');assert.equal(g.captures,0);});
+test('boss defeat gives a capture and clears the stage',()=>{const g=new Game(minimal());g.start();g.advance();g.boss.hp=0;g.nextPhase();assert.equal(g.mode,'clear');assert.equal(g.captures,1);});
+test('bombing invalidates the current spell capture',()=>{const g=new Game(minimal());g.start();g.advance();g.bomb();g.boss.hp=0;g.nextPhase();assert.equal(g.captures,0);});
+test('branching follows each selected label',()=>{for(const [choice,name]of [[0,'静かな灯り'],[1,'踊る灯り']]){const g=new Game(parseProject(sample('branching')));g.start();assert.ok(g.choice);g.choose(choice);for(let i=0;i<1400&&!g.boss;i++){g.player.inv=999;g.step(FIXED_DT);}assert.equal(g.boss.name,name);}});
+test('a goto loop without waiting is stopped rather than hanging',()=>{const c=parseProject(sample('minimal').replace(/story:[\s\S]*/,'story:\n  - label: loop\n  - goto: loop\n'));assert.throws(()=>new Game(c).start(),/ループ/);});
+test('a split bullet emits its child pattern and disappears',()=>{const g=new Game(parseProject(sample('stage')));g.preview('lanterns');g.autoShot=false;tick(g,1.45);assert.ok(g.bullets.some(b=>b.depth===1));assert.ok(!g.bullets.some(b=>b.depth===0&&b.age>1.3));});
+test('the bullet population cannot exceed its cap',()=>{const g=new Game(minimal());g.bullets=new Array(LIMITS.bullets).fill({});assert.equal(g.addBullet({}),false);assert.equal(g.bullets.length,LIMITS.bullets);assert.equal(g.capHit,true);});
+test('continue in preview returns to preview, not story',()=>{const g=new Game(minimal());g.preview('flower');g.practice=false;g.player.lives=1;g.player.inv=0;g.hit();assert.equal(g.mode,'gameover');g.continueRun();assert.equal(g.mode,'preview');});
+test('all 7 patterns run for 15 simulated seconds without invalid states',()=>{const c=parseProject(sample('stage'));for(const id of Object.keys(c.patterns)){const g=new Game(c);g.preview(id);g.autoShot=false;tick(g,15);assert.ok(g.bullets.length<=LIMITS.bullets);for(const b of g.bullets){assert.ok(Number.isFinite(b.x)&&Number.isFinite(b.y));assert.ok(b.radius<=b.size*.43+.000001);}}});
+test('full sample story reaches the ending through all four boss phases',()=>{const g=new Game(parseProject(sample('stage')));g.start('normal');g.autoShot=true;let steps=0;const phases=new Set();while(g.mode==='story'&&steps++<35000){g.player.inv=999;if(g.dialogue){g.advance();continue;}if(g.boss)phases.add(g.boss.index);g.step(FIXED_DT,{x:0,y:0});}assert.equal(g.mode,'clear');assert.equal(phases.size,4);assert.ok(g.time>20);});
