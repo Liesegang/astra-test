@@ -1,0 +1,28 @@
+# コピーして増やせる、最小のステージ。
+version: 1
+meta: {title: はじめての弾幕, stage: 小さな夜}
+patterns:
+  flower:
+    name: 六方向の花
+    emitters:
+      - every: 0.12
+        count: 6
+        angle: k * 8
+        spread: 360
+        speed: 100
+        color: pink
+        shape: rice
+bosses:
+  test:
+    name: 花の精
+    phases:
+      - name: 六方向の花
+        hp: 1000
+        duration: 25
+        patterns: [flower]
+story:
+  - dialogue:
+      - speaker: 花の精
+        text: 花びらの間を、通り抜けてみて。
+  - boss: test
+  - end: true

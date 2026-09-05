@@ -1,0 +1,68 @@
+# 分岐・ラベル・ループのサンプル。
+version: 1
+meta: {title: 二つの参道, stage: 夜の分かれ道}
+patterns:
+  ring:
+    name: 灯りの輪
+    params: {speed: 90}
+    emitters:
+      - every: 0.4
+        count: 16
+        angle: k * 9
+        spread: 360
+        speed: speed
+        color: ice
+  aim:
+    name: 三つの星
+    emitters:
+      - every: 0.75
+        count: 3
+        spread: 30
+        aim: player
+        speed: 140
+        color: gold
+enemies:
+  light:
+    hp: 25
+    patterns: [aim]
+bosses:
+  gentle:
+    name: 静かな灯り
+    phases:
+      - name: 遠い満月
+        hp: 900
+        duration: 20
+        patterns: [ring]
+  wild:
+    name: 踊る灯り
+    phases:
+      - name: 近い満月
+        hp: 1400
+        duration: 25
+        patterns:
+          - use: ring
+            with: {speed: 140}
+          - aim
+story:
+  - choice:
+      prompt: どちらの参道を進みますか？
+      options:
+        - text: 静かな参道
+          goto: gentle_route
+        - text: 灯りの多い参道
+          goto: wild_route
+  - label: gentle_route
+  - boss: gentle
+  - goto: ending
+  - label: wild_route
+  - repeat: 3
+    steps:
+      - wave: {enemy: light, count: 3, interval: 0.5, x: 100 + i * 130, vy: 70}
+      - wait: 3
+  - clear: true
+  - boss: wild
+  - label: ending
+  - dialogue:
+      - speaker: 灯火
+        text: どちらの道も、同じ月へ続いていた。
+  - end: true
