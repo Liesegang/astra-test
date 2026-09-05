@@ -1,0 +1,62 @@
+name: Restore editable source
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/restore-source.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Restore original ES modules, YAML and licenses
+        shell: python
+        run: |
+          import base64, gzip, hashlib, json, os, pathlib, re
+          root = pathlib.Path('.')
+          if (root / 'src/main.mjs').exists():
+              print('Already restored; no changes.')
+              raise SystemExit(0)
+          html = gzip.decompress(base64.b64decode(''.join((root / f'assets/game-{i}.b64').read_text().strip() for i in range(1, 9))))
+          assert hashlib.sha256(html).hexdigest() == '0deb7e3aeda6fec5589012ccb74f01480767a9868f5cb810d37fd650ad1e6b84', 'Unexpected baseline; refusing migration'
+          html = html.decode('utf-8')
+          paths = {'__m0': 'src/main.mjs', '__m1': 'src/config.mjs', '__m2': 'vendor/yaml.mjs', '__m3': 'src/expression.mjs', '__m4': 'src/engine.mjs', '__m5': 'src/patterns.mjs', '__m6': 'src/renderer.mjs', '__m7': 'src/audio.mjs', '__m8': 'src/content.mjs'}
+          blocks = re.findall(r'^const (__m\d+)=\(\(\)=>\{\n([\s\S]*?)\nreturn \{([^}\n]*)\};\n\}\)\(\);', html, re.M)
+          assert len(blocks) == 9
+          for name, source, exports in blocks:
+              file = root / paths[name]
+              file.parent.mkdir(parents=True, exist_ok=True)
+              def restore_import(m):
+                  target = os.path.relpath(paths[m[2]], file.parent).replace(os.sep, '/')
+                  if not target.startswith('.'): target = './' + target
+                  return 'import {' + m[1] + '} from ' + repr(target) + ';'
+              source = re.sub(r'^const \{([^}]+)\}=(__m\d+);$', restore_import, source, flags=re.M)
+              if exports: source += '\nexport {' + exports + '};\n'
+              file.write_text(source.replace('<\\/script', '</script'), encoding='utf-8')
+              if name == '__m8':
+                  samples = json.loads(re.search(r'const SAMPLES = (.*);', source)[1])
+                  (root / 'content').mkdir(exist_ok=True)
+                  for key, text in samples.items(): (root / f'content/{key}.yaml').write_text(text, encoding='utf-8')
+          css = re.search(r'<style>\n([\s\S]*?)\n</style>', html)
+          assert css
+          (root / 'src/style.css').write_text(css[1], encoding='utf-8')
+          licenses = re.search(r'<!--\n([\s\S]*?)\n-->', html)[1]
+          license_text, vendor_license = licenses.split('\n\nThird-party software:\n', 1)
+          (root / 'LICENSE').write_text(license_text, encoding='utf-8')
+          (root / 'vendor/LICENSE-js-yaml.txt').write_text(vendor_license, encoding='utf-8')
+          html = html.replace(css[0], '<link rel="stylesheet" href="src/style.css">')
+          html, count = re.subn(r'<script>\n\'use strict\';\n[\s\S]*?\n</script>', '<script type="module" src="src/main.mjs"></script>', html)
+          assert count == 1
+          (root / 'index.html').write_text(html, encoding='utf-8')
+          (root / 'package.json').write_text(json.dumps({'name': 'moonlit-archive', 'version': '1.1.0', 'private': True, 'type': 'module', 'scripts': {'dev': 'node scripts/serve.mjs', 'build': 'node scripts/build.mjs', 'test': 'node --test tests/*.test.mjs'}, 'engines': {'node': '>=22'}, 'license': 'MIT'}, indent=2) + '\n')
+      - name: Commit restored source
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src content vendor LICENSE index.html package.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'Restore original editable game source, YAML and licenses'
+            git push origin HEAD:main
+          fi
